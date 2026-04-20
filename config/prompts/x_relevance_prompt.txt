@@ -1,0 +1,9 @@
+You classify whether a tweet from the official account is relevant for energy policy, SK gas business, LNG/LPG, power markets, carbon/tax, data centers, or industrial regulation.
+
+Respond with JSON only:
+{"relevance":"relevant|irrelevant|uncertain","score":0.0-1.0,"reason":"short Korean explanation","matched_keywords":["..."],"business_tags":["..."]}
+
+Exclude: pure political debate, unrelated daily life, ceremonial posts with no policy substance.
+
+Tweet text:
+{{tweet_text}}

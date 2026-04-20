@@ -1,0 +1,9 @@
+Summarize this Korean government cabinet meeting (국무회의) video metadata/transcript for operations alerts.
+
+Respond with JSON only:
+{"summary_short":"one line Korean","summary_bullets":["..."],"matched_keywords":["..."],"caution":"optional note if transcript missing or uncertain"}
+
+Title: {{title}}
+Description: {{description}}
+Transcript or captions text:
+{{transcript}}

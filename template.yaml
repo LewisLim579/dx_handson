@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: 대외정책 뉴스 클리핑 — 단일 Lambda + S3 + Scheduler + Function URL
+
+Parameters:
+  AppSecretArn:
+    Type: String
+    Description: Secrets Manager ARN (JSON with TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, TWITTER_BEARER_TOKEN, YOUTUBE_API_KEY)
+
+Globals:
+  Function:
+    Timeout: 900
+    MemorySize: 1024
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+
+Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  ClippingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.lambda_handler
+      CodeUri: .
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref DataBucket
+          S3_PREFIX: ""
+          APP_SECRET_ARN: !Ref AppSecretArn
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucket
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref AppSecretArn
+      FunctionUrlConfig:
+        AuthType: NONE
+      Events:
+        ScheduleNews:
+          Type: Schedule
+          Properties:
+            Schedule: rate(4 hours)
+            Input: '{"jobType":"news"}'
+        ScheduleGov:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 2 * * ? *)
+            Input: '{"jobType":"gov"}'
+        ScheduleX:
+          Type: Schedule
+          Properties:
+            Schedule: rate(10 minutes)
+            Input: '{"jobType":"x"}'
+        ScheduleYoutube:
+          Type: Schedule
+          Properties:
+            Schedule: rate(30 minutes)
+            Input: '{"jobType":"youtube"}'
+
+Outputs:
+  BucketName:
+    Value: !Ref DataBucket
+  FunctionName:
+    Value: !Ref ClippingFunction
