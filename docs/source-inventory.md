@@ -1,10 +1,10 @@
-# 소스 인벤토리
+# 소스 목록(인벤토리)
 
-`config/sources.json`과 동일한 44개 소스를 구조화한 목록이다. **원문 URL·키워드는 설정 파일이 단일 소스 오브 트루스**이며, 본 문서는 운영·검수용이다.
+`config/sources.json`에 있는 **44개 소스**를 표로 정리한 것입니다. **실제로 쓰는 URL·키워드는 항상 `config/` 쪽 파일이 맞고**, 이 문서는 검토·운영할 때 보조로 쓰면 됩니다.
 
-범례: **spec_kw** = `source_specific_keywords` 사용 여부(Y/N).
+**표 머리글:** **spec_kw** = 해당 소스에 `source_specific_keywords`를 쓰는지(Y/N).
 
-## 뉴스·언론 (9)
+## 뉴스·언론 (9개)
 
 | source_id | site_name | menu_name | frequency | parser_profile | spec_kw | url |
 |-----------|-----------|-----------|-----------|----------------|---------|-----|
@@ -18,7 +18,7 @@
 | ekn | 에너지경제신문 | 에너지경제신문 | 3-6/day | html_search_result | N | https://www.ekn.kr/web/search_detail.php? |
 | todayenergy | 투데이에너지 | 전체 < 기사목록 - 투데이에너지 | 3-6/day | html_article_list | N | https://www.todayenergy.kr/news/articleList.html |
 
-## 정부·공공·연구·정책 (33)
+## 정부·공공·연구·정책 (33개)
 
 | source_id | site_name | menu_name | frequency | parser_profile | spec_kw | url |
 |-----------|-----------|-----------|-----------|----------------|---------|-----|
@@ -56,14 +56,14 @@
 | kpx_rules_detail | 전력거래소 | 세부운영규정 | 1/day | html_policy_board | Y | https://new.kpx.or.kr/board.es?mid=a11002020000&bid=0031 |
 | kpx_rules_other | 전력거래소 | 기타 | 1/day | html_policy_board | Y | https://new.kpx.or.kr/board.es?mid=a11002040000&bid=0032 |
 
-## X · YouTube (2)
+## X · YouTube (2개)
 
 | source_id | site_name | menu_name | frequency | parser_profile | spec_kw | url |
 |-----------|-----------|-----------|-----------|----------------|---------|-----|
 | x_president | X(트위터) | 대통령 트위터 | realtime | x_feed | N | https://twitter.com/Jaemyung_Lee |
 | ktv_youtube | KTV 국민방송 | KTV 국민방송 YouTube | post_meeting | youtube_channel_or_archive | N | https://www.youtube.com/@ktv_kr |
 
-## 키워드
+## 키워드 설정은 어디에 있나요
 
-- 글로벌·소스별 키워드·normalize: `config/keywords.json`
-- 제외·엄격 키워드 확장: `config/filters.json`
+- 전역·소스별 키워드·정규화: `config/keywords.json`  
+- 제외·강한 일치 키워드: `config/filters.json`
