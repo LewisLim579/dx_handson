@@ -12,11 +12,13 @@
 - AWS에서는 **Secrets Manager**에 JSON 한 번에 넣고, Lambda 환경 변수 `APP_SECRET_ARN`으로 가져옵니다.  
 - 로컬에서는 **환경 변수**가 우선이고, 보통 `.env`와 함께 씁니다.
 
-## LLM (Azure vs OpenAI 호환)
+## LLM (Gemini · Azure · OpenAI 호환)
 
-- **Azure OpenAI를 우선**합니다. `AZURE_OPENAI_ENDPOINT`와 `AZURE_OPENAI_API_KEY`가 있으면 `openai.AzureOpenAI` 클라이언트로 채팅 API를 호출합니다.  
-- JSON 응답 형식이 거부되면, 같은 클라이언트로 옵션을 조금 바꿔 **다시 시도**합니다.  
-- Azure를 쓰지 않을 때만 **OpenAI 호환 HTTP**(`OPENAI_API_KEY`, 선택 `OPENAI_API_BASE`) 경로를 씁니다.
+- **`LLM_PROVIDER`**: `auto`(기본) / `gemini` / `azure` / `openai`.  
+- **`auto`**: **유튜브 요약**은 `GEMINI_API_KEY`가 있으면 **Gemini**를 우선(메타·요약 품질에 유리하도록). **X 판별**은 기존처럼 **Azure → OpenAI → Gemini** 순으로 사용 가능한 키를 고릅니다.  
+- **Gemini**는 `google-generativeai`로 호출하고, 가능하면 **JSON MIME**으로 받되, 실패 시 일반 생성으로 한 번 더 시도합니다.  
+- **Azure OpenAI**는 `openai.AzureOpenAI`로 호출합니다. JSON 모드가 거부되면 옵션을 바꿔 재시도합니다.  
+- **OpenAI 호환 HTTP**는 Azure·Gemini를 쓰지 않을 때 `OPENAI_API_KEY`로 붙입니다.
 
 ## HTML 파싱
 

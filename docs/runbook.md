@@ -5,9 +5,10 @@
 ## 배포 전에 확인할 것
 
 1. S3 버킷(SAM이 만들어 줌)과 Lambda 실행 역할에 `s3:GetObject`, `s3:PutObject` 권한이 있습니다.  
-2. Secrets Manager 시크릿에 **최소** 다음 키가 들어 있습니다.  
+2. Secrets Manager 시크릿에 **최소** 다음 키가 들어 있습니다(실제로 쓰는 LLM에 맞게).  
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`  
-   - `OPENAI_API_KEY`  
+   - 유튜브에 Gemini: `GEMINI_API_KEY`, (선택) `GEMINI_MODEL`, `LLM_PROVIDER`  
+   - X·백업용: `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` 또는 `OPENAI_API_KEY`  
    - `TWITTER_BEARER_TOKEN`  
    - `YOUTUBE_API_KEY`  
 3. Lambda 환경 변수: `S3_BUCKET`, `APP_SECRET_ARN`(배포 템플릿과 동일하게).

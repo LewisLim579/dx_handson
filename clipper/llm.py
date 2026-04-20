@@ -11,6 +11,47 @@ from clipper.models import XAIResult, YouTubeAIResult
 from clipper.secrets import get_secret
 
 
+def _gemini_chat(messages: list[dict[str, str]], temperature: float = 0.2) -> str:
+    try:
+        import google.generativeai as genai
+    except ImportError as e:
+        raise RuntimeError(
+            "Gemini를 쓰려면 패키지가 필요합니다: pip install google-generativeai"
+        ) from e
+
+    key = get_secret("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY missing")
+
+    genai.configure(api_key=key)
+    model_name = (get_secret("GEMINI_MODEL") or "gemini-1.5-flash").strip()
+
+    system_chunks = [m["content"] for m in messages if m.get("role") == "system"]
+    user_chunks = [m["content"] for m in messages if m.get("role") == "user"]
+    user_text = "\n\n".join(user_chunks) if user_chunks else ""
+
+    gm_kw: dict[str, Any] = {}
+    if system_chunks:
+        gm_kw["system_instruction"] = "\n".join(system_chunks)
+    model = genai.GenerativeModel(model_name, **gm_kw)
+
+    # JSON 전용 응답(지원 모델). 실패 시 일반 텍스트로 재시도.
+    gen_cfg: dict[str, Any] = {
+        "temperature": temperature,
+        "response_mime_type": "application/json",
+    }
+    try:
+        response = model.generate_content(user_text, generation_config=gen_cfg)
+    except Exception:
+        gen_cfg.pop("response_mime_type", None)
+        response = model.generate_content(user_text, generation_config=gen_cfg)
+
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("gemini_empty_content")
+    return text
+
+
 def _use_azure() -> bool:
     ep = get_secret("AZURE_OPENAI_ENDPOINT")
     key = get_secret("AZURE_OPENAI_API_KEY")
@@ -82,10 +123,44 @@ def _openai_compatible_chat(messages: list[dict[str, str]], temperature: float =
     return data["choices"][0]["message"]["content"]
 
 
-def _llm_chat(messages: list[dict[str, str]], temperature: float = 0.2) -> str:
+def _llm_chat(
+    messages: list[dict[str, str]],
+    temperature: float = 0.2,
+    *,
+    for_youtube: bool = False,
+) -> str:
+    """LLM 호출. for_youtube=True 이고 LLM_PROVIDER=auto 이면 GEMINI_API_KEY가 있을 때 유튜브만 Gemini 우선."""
+    mode = (get_secret("LLM_PROVIDER") or "auto").strip().lower()
+    gemini_key = get_secret("GEMINI_API_KEY")
+
+    if mode == "gemini":
+        if not gemini_key:
+            raise RuntimeError("LLM_PROVIDER=gemini 인데 GEMINI_API_KEY가 없습니다")
+        return _gemini_chat(messages, temperature)
+
+    if mode == "azure":
+        if not _use_azure():
+            raise RuntimeError("LLM_PROVIDER=azure 인데 AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY가 없습니다")
+        return _azure_chat(messages, temperature)
+
+    if mode == "openai":
+        if not get_secret("OPENAI_API_KEY"):
+            raise RuntimeError("LLM_PROVIDER=openai 인데 OPENAI_API_KEY가 없습니다")
+        return _openai_compatible_chat(messages, temperature)
+
+    # --- auto ---
+    if for_youtube and gemini_key:
+        return _gemini_chat(messages, temperature)
     if _use_azure():
-        return _azure_chat(messages, temperature=temperature)
-    return _openai_compatible_chat(messages, temperature=temperature)
+        return _azure_chat(messages, temperature)
+    if get_secret("OPENAI_API_KEY"):
+        return _openai_compatible_chat(messages, temperature)
+    if gemini_key:
+        return _gemini_chat(messages, temperature)
+    raise RuntimeError(
+        "LLM 키가 없습니다. GEMINI_API_KEY, 또는 AZURE_OPENAI_ENDPOINT+AZURE_OPENAI_API_KEY, "
+        "또는 OPENAI_API_KEY 중 하나를 설정하세요."
+    )
 
 
 def _parse_json_loose(raw: str) -> dict[str, Any]:
@@ -102,7 +177,8 @@ def classify_x_relevance(tweet_text: str, prompt_template: str) -> XAIResult:
         [
             {"role": "system", "content": "You output JSON only."},
             {"role": "user", "content": prompt},
-        ]
+        ],
+        for_youtube=False,
     )
     d = _parse_json_loose(content)
     rel = str(d.get("relevance") or d.get("classification") or "uncertain").lower()
@@ -141,7 +217,8 @@ def summarize_youtube(
         [
             {"role": "system", "content": "You output JSON only. Korean summaries."},
             {"role": "user", "content": prompt},
-        ]
+        ],
+        for_youtube=True,
     )
     d = _parse_json_loose(content)
     bullets = d.get("summary_bullets") or []

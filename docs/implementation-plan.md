@@ -11,7 +11,7 @@
 | EventBridge Scheduler | `jobType`(`news` / `gov` / `x` / `youtube`)마다 **같은 Lambda**를 호출합니다. |
 | Lambda 1개 | 스케줄 작업 + HTTP GET(대시보드·JSON API) |
 | S3 | `config/`, `state/`, `output/`를 **파일(JSON)**로 저장합니다. |
-| Secrets Manager | 텔레그램·OpenAI·X·YouTube 키 |
+| Secrets Manager | 텔레그램·LLM(Gemini/Azure/OpenAI)·X·YouTube 키 |
 | CloudWatch Logs | Lambda 기본 로그 |
 
 ## 코드가 나뉘는 방식
@@ -23,7 +23,7 @@
 - `clipper/keywords.py` — 전역·소스별 키워드를 합치고, 별칭·정규화를 합니다.  
 - `clipper/dedupe.py` — `external_id`, 정규화한 URL, 제목+시간 해시 등으로 중복을 줄입니다.  
 - `clipper/telegram_client.py` — 카테고리별로 메시지 모양을 맞춥니다.  
-- `clipper/llm.py` — OpenAI 호환 Chat Completions와 JSON 파싱(X·YouTube).  
+- `clipper/llm.py` — Gemini / Azure OpenAI / OpenAI 호환 호출과 JSON 파싱(X·YouTube).  
 - `clipper/x_fetch.py`, `clipper/youtube_fetch.py` — Twitter API v2, YouTube Data API v3.
 
 ## 한 번의 job이 돌아갈 때(흐름)

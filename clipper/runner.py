@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from clipper.dashboard import (
     append_failure,
@@ -30,6 +32,30 @@ from clipper.youtube_fetch import get_video_detail, resolve_channel_id_for_handl
 def _bundle_config_dir() -> Path:
     root = os.environ.get("LAMBDA_TASK_ROOT") or str(Path(__file__).resolve().parents[1])
     return Path(root) / "config"
+
+
+def _x_username_from_source_url(url: str) -> str | None:
+    """`https://twitter.com/Jaemyung_Lee` / `x.com/...` 경로에서 사용자명 추출."""
+    if not url or not isinstance(url, str):
+        return None
+    try:
+        p = urlparse(url.strip())
+        parts = [seg for seg in p.path.split("/") if seg]
+        if not parts:
+            return None
+        return parts[0]
+    except Exception:
+        return None
+
+
+def _youtube_handle_from_source_url(url: str) -> str | None:
+    """`https://www.youtube.com/@ktv_kr` 형태에서 핸들(ktv_kr) 추출."""
+    if not url or not isinstance(url, str):
+        return None
+    m = re.search(r"/@([^/?#]+)", url.strip())
+    if m:
+        return m.group(1).lstrip("@")
+    return None
 
 
 def ensure_bootstrap(storage: Storage) -> None:
@@ -364,7 +390,7 @@ def _run_x_job(
     if not src:
         raise RuntimeError("x_president missing in sources.json")
     prompt = _load_prompt(storage, "x_relevance_prompt.txt")
-    username = "Jaemyung_Lee"
+    username = _x_username_from_source_url(str(src.get("url") or "")) or "Jaemyung_Lee"
     since = (checkpoint.get("x") or {}).get("last_tweet_id")
     tweets, newest_id = fetch_recent_tweets(username, since_id=str(since) if since else None, max_results=10)
     stats = {"fetched": len(tweets), "ai_ok": 0, "sent": 0, "errors": 0}
@@ -457,8 +483,12 @@ def _run_youtube_job(
     item_ledger: list[dict[str, Any]],
     fail_ledger: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    yt_src = next((s for s in src_list if s.get("source_id") == "ktv_youtube"), None)
+    if not yt_src:
+        raise RuntimeError("ktv_youtube missing in sources.json")
     prompt = _load_prompt(storage, "youtube_summary_prompt.txt")
-    ch = resolve_channel_id_for_handle("ktv_kr")
+    handle = _youtube_handle_from_source_url(str(yt_src.get("url") or "")) or "ktv_kr"
+    ch = resolve_channel_id_for_handle(handle)
     vids = search_cabinet_videos(ch, max_results=10)
     processed = list((checkpoint.get("youtube") or {}).get("processed_video_ids") or [])
     proc_set = set(processed)

@@ -5,7 +5,7 @@ Description: 대외정책 뉴스 클리핑 — 단일 Lambda + S3 + Scheduler + 
 Parameters:
   AppSecretArn:
     Type: String
-    Description: Secrets Manager ARN (JSON with TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, TWITTER_BEARER_TOKEN, YOUTUBE_API_KEY)
+    Description: Secrets Manager ARN (JSON with TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, GEMINI_API_KEY, TWITTER_BEARER_TOKEN, YOUTUBE_API_KEY, optional LLM_PROVIDER, AZURE_OPENAI_*)
 
 Globals:
   Function:
