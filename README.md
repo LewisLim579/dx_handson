@@ -1,21 +1,21 @@
 # 대외정책 뉴스 클리핑 (Serverless)
 
-정책·에너지·대외 이슈를 **웹·SNS·YouTube**에서 자동으로 모으고, 조건에 맞으면 **Telegram**으로 알려 줍니다.
+정책·에너지·대외 이슈를 **웹·SNS·YouTube**에서 수집하고, 조건에 맞을 경우 **Telegram**으로 알림을 전송합니다.
 
-이 프로젝트는 **로컬에서 먼저 전부 검증한 다음, 별도 앱을 짜지 않고 Lambda 기반 AWS에 그대로 올릴 수 있게** 맞춰 둔 설계입니다. PC에서는 폴더·`.env`로 돌리고, 배포 후에는 **같은 코드**가 **S3 + Secrets Manager** 환경에서 **Lambda**로 돌아갑니다(아래 *개발·배포 흐름*·*설계 취지* 참고).
+본 저장소는 **로컬에서 동작을 검증한 뒤, 동일 애플리케이션 코드를 AWS Lambda 기반으로 배포**할 수 있도록 구성되어 있습니다. 개발 시에는 로컬 디렉터리와 `.env`를 사용하고, 운영 배포 후에는 **S3·Secrets Manager·Lambda** 환경에서 동일 코드가 실행됩니다(아래 *개발·배포 흐름*, *설계 취지* 참조).
 
 ---
 
 ## 개발·배포 흐름 (로컬 → AWS Lambda)
 
-| 단계 | 하는 일 | 비고 |
-|------|---------|------|
-| **1. 로컬 검증** | `pytest` · `cli.py run --job …` · `local_server.py`로 job·대시보드·설정이 기대대로인지 확인 | 데이터는 `local_data/`(또는 `LOCAL_DATA_ROOT`) |
-| **2. AWS 배포** | `sam build` → `sam deploy` 로 **Lambda + S3 + EventBridge + Function URL** 구성 | `template.yaml` 단일 스택 |
-| **3. 운영** | EventBridge가 스케줄·`jobType`으로 Lambda 호출, 대시보드는 **Function URL** GET | 비밀은 **Secrets Manager**, 객체는 **S3** |
+| 단계 | 작업 | 비고 |
+|------|------|------|
+| **1. 로컬 검증** | `pytest`, `cli.py run --job …`, `local_server.py`로 job·대시보드·설정 동작 확인 | 데이터 경로: `local_data/` 또는 `LOCAL_DATA_ROOT` |
+| **2. AWS 배포** | `sam build` → `sam deploy`로 **Lambda, S3, EventBridge 규칙, Function URL** 프로비저닝 | `template.yaml` 단일 CloudFormation 스택 |
+| **3. 운영** | EventBridge가 스케줄·`jobType` 페이로드로 Lambda 호출, 대시보드는 **Function URL** 경유 **GET** | 자격 증명: **Secrets Manager**, 객체 저장: **S3** |
 
-- **앱 본문(`handler.py`, `clipper/*`)은 로컬과 AWS가 공유**합니다. “클라우드 전용” 분기·복제 코드를 두지 않습니다.  
-- **달라지는 것**은 대개 환경 변수뿐입니다(예: `S3_BUCKET` / `APP_SECRET_ARN` 유무, 로컬은 `.env`).
+- **애플리케이션 코드**(`handler.py`, `clipper/*`)는 로컬과 AWS에서 **공유**합니다. 환경 전용 분기나 중복 구현은 두지 않습니다.  
+- **차이**는 주로 **영속화 경로**와 **시크릿 주입 방식**입니다. 로컬에서는 환경 변수(`.env`)가 우선하고, AWS에서는 동일 키를 **Secrets Manager** JSON에서 로드할 수 있습니다(`clipper/secrets.py`의 `get_secret`). 배포된 Lambda의 `S3_BUCKET`, `APP_SECRET_ARN`은 **CloudFormation 템플릿이 주입**합니다.
 
 ---
 
@@ -23,41 +23,93 @@
 
 | 구분 | 내용 |
 |------|------|
-| **Job 종류** | `news`, `gov`, `x`, `youtube` 네 가지. 소스·키워드는 **`config/`**가 기준이며 임의로 줄이지 않습니다. |
-| **Telegram 형식** | 뉴스·공공: **제목 + 링크** / X: **본문 + 링크 + AI 판단 근거** / YouTube: **요약 + 링크** |
-| **대시보드** | **읽기 전용**. HTML 한 페이지 + JSON: `/api/dashboard`, `/api/items` |
-| **소스** | 뉴스·공공 다수, X는 대통령실 계정(`config` URL 기준), YouTube는 KTV 등 — [`docs/source-inventory.md`](docs/source-inventory.md) 참고 |
+| **Job** | `news`, `gov`, `x`, `youtube`. 소스·키워드는 **`config/`**가 단일 기준이며 임의 축소하지 않습니다. |
+| **Telegram** | 뉴스·공공: 제목+링크 / X: 본문+링크+AI 판단 근거 / YouTube: 요약+링크 |
+| **대시보드** | 읽기 전용. HTML 단일 페이지 및 JSON API: `/api/dashboard`, `/api/items` |
+| **소스** | 뉴스·공공 다수, X(대통령실 계정, `config` URL 기준), YouTube(KTV 등) — 상세는 [`docs/source-inventory.md`](docs/source-inventory.md) |
 
-**한 줄 요약:** 지정 소스 → 필터 → **Telegram**, 실행 결과는 **대시보드**에서 확인합니다.
+**요약:** 지정 소스 수집 → 필터링 → **Telegram** 발송, 실행 결과는 **대시보드**에서 조회합니다.
 
 ---
 
 ## 설계 취지
 
-과제·hands-on에 맞게 **단순하고 가볍게** 가져갑니다. **“로컬에서 테스트 → SAM으로 Lambda에 배포”** 를 기본 루트로 삼습니다.
+**단순성·경량화**를 우선하며, **로컬 검증 → SAM 기반 Lambda 배포**를 표준 절차로 둡니다.
 
-1. **구성 요소는 최소로**  
-   **Lambda 함수 하나**가 스케줄 job과 HTTP(대시보드)를 함께 처리합니다. DB 대신 **JSON 파일**만 둡니다.
+1. **최소 구성**  
+   **단일 Lambda 함수**가 스케줄 기반 job과 HTTP(대시보드) 요청을 모두 처리합니다. 관계형 DB 대신 **JSON 파일**로 상태·설정을 보관합니다.
 
-2. **로컬과 AWS가 같은 코드**  
-   클리핑은 **`run_job` 하나**입니다. 로컬은 `local_data/`, AWS는 **S3**에 같은 key layout. **`S3_BUCKET` 유무만** 보면 됩니다.
+2. **코드 단일화**  
+   클리핑 로직은 **`run_job` 단일 진입점**입니다. `clipper.storage.storage_from_env()`는 **`S3_BUCKET` 미설정 시** 로컬 디렉터리(`LOCAL_DATA_ROOT`, 기본값 `local_data/`), **설정 시** S3를 사용합니다. 로컬 개발 중 **`S3_BUCKET`을 설정하면** 실제 AWS 버킷에 연결되므로 주의가 필요합니다.
 
-3. **비밀은 코드 밖에**  
-   로컬은 **`.env`**, AWS는 **Secrets Manager** JSON을 Lambda가 읽습니다.
+3. **시크릿 관리**  
+   로컬: **`.env`**. AWS: **Secrets Manager**에 JSON 저장 후 Lambda가 참조합니다.
 
-4. **UI는 얇게**  
-   별도 프론트 빌드 없이 **HTML + JSON** 응답, **API Gateway** 없이 **Lambda Function URL**에 **GET**만 노출합니다.
+4. **프레젠테이션 계층**  
+   별도 SPA 빌드 없이 **HTML·JSON** 응답, **API Gateway** 없이 **Lambda Function URL**에 **GET**만 노출합니다.
 
-5. **LLM은 갈아끼울 수 있게**  
-   X / YouTube 후처리는 **Gemini · Azure OpenAI · OpenAI 호환** — `LLM_PROVIDER` 등으로 고릅니다(아래 환경 변수).
+5. **LLM 추상화**  
+   X·YouTube 후처리에 **Gemini / Azure OpenAI / OpenAI 호환** 엔드포인트를 선택할 수 있도록 **`LLM_PROVIDER`** 등으로 구성합니다(아래 환경 변수).
 
-**정리:** 함수 하나 + 파일 저장 + 외부 API. 인프라는 늘리지 않았습니다.
+**설계 요약:** 단일 함수 + 파일 기반 저장소 + 외부 API 연동. 불필요한 인프라 구성요소는 배제했습니다.
+
+---
+
+## 기술 스택 및 구성 요소
+
+아래는 README·코드에서 등장하는 구성 요소의 **역할**입니다.
+
+### AWS (운영 환경)
+
+| 구성 요소 | 역할 |
+|-----------|------|
+| **AWS Lambda** | 전용 VM 운영 없이 **이벤트 구동**으로 Python 핸들러(`handler.py`)를 실행하는 **서버리스 컴퓨트**입니다. |
+| **EventBridge (규칙 기반 스케줄)** | SAM `Schedule` 이벤트가 **EventBridge Rule**을 생성하여, 지정 주기·cron에 따라 동일 Lambda 함수를 **invoke**합니다. (별도 관리형 서비스인 **EventBridge Scheduler**와는 구분됩니다. 본 템플릿은 **규칙 + 스케줄 표현식** 패턴입니다.) |
+| **Amazon S3** | **객체 스토어**에 설정·상태·로그를 **JSON 객체**로 저장합니다(관계형 DB 미사용). |
+| **AWS Secrets Manager** | API 키·토큰 등 **시크릿**을 저장하며, Lambda 실행 시 `GetSecretValue`로 조회합니다(소스 코드 내 하드코딩 없음). |
+| **Lambda Function URL** | Lambda에 **HTTPS 엔드포인트**를 부여합니다. **API Gateway** 없이 대시보드용 **GET** 요청을 처리합니다. |
+| **AWS SAM** | `template.yaml`(IaC)로 Lambda·S3·스케줄·IAM 등을 **일관 배포**합니다(`sam build` / `sam deploy`). |
+
+**스케줄링과 cron**  
+- **온프레미스 호스트의 crontab**은 해당 서버 가용성·타임존·장애 대응을 팀이 직접 관리해야 합니다.  
+- 본 아키텍처에서는 **EventBridge Rule의 스케줄 표현식**으로 동일 요구를 **관리형 서비스**에 위임하고, 주기 변경은 템플릿 또는 콘솔에서 조정합니다.  
+- **로컬 개발** 환경에는 EventBridge가 없으므로, **`python cli.py run --job …`**로 동일 비즈니스 로직을 수동 실행합니다.
+
+### 런타임·SDK
+
+| 구성 요소 | 역할 |
+|-----------|------|
+| **Python 3.12** | Lambda 런타임과 로컬 실행 환경을 일치시킵니다. |
+| **boto3** | S3, Secrets Manager 등 **AWS API** 호출용 공식 SDK입니다. |
+
+### 수집·HTTP·HTML
+
+| 구성 요소 | 역할 |
+|-----------|------|
+| **requests** | 뉴스 사이트, X API v2, YouTube Data API 등 **HTTP 클라이언트** 용도입니다. |
+| **BeautifulSoup4, lxml** | 수집한 **HTML**에서 링크·제목 등 구조화 정보를 **파싱**합니다. |
+
+### LLM
+
+| 구성 요소 | 역할 |
+|-----------|------|
+| **google-generativeai** | **Gemini** API. `LLM_PROVIDER=auto`일 때 YouTube 요약은 `GEMINI_API_KEY`가 있으면 우선 사용하고, X 처리에서는 Azure·OpenAI 키가 없을 때 등 **폴백**으로 사용될 수 있습니다. |
+| **openai** (Python SDK) | **Azure OpenAI**(`AzureOpenAI`) 및 **OpenAI 호환 HTTP** 엔드포인트. `LLM_PROVIDER` 및 키 구성에 따라 X·YouTube 경로가 결정됩니다. |
+
+분기 로직은 `clipper/llm.py`의 `_llm_chat`에 구현되어 있습니다.
+
+### 로컬 개발 도구
+
+| 구성 요소 | 역할 |
+|-----------|------|
+| **python-dotenv** | `.env`를 로드하여 로컬 환경 변수를 구성합니다. |
+| **pytest** | 단위·통합 테스트 실행, 배포 전 회귀 검증에 사용합니다. |
 
 ---
 
 ## 아키텍처 개요
 
-### 전체 그림
+### 전체 구조
 
 ```mermaid
 flowchart LR
@@ -93,28 +145,28 @@ flowchart LR
   R --> AI
 ```
 
-- **들어옴:** (1) 스케줄 payload의 `jobType`으로 Lambda invoke, (2) 사용자가 **Function URL**로 **GET**만 호출.  
-- **나감:** Telegram 메시지, S3 또는 로컬에 남는 **실행 기록·대시보드 스냅샷**.
+- **입력:** (1) 스케줄 이벤트의 `jobType`으로 Lambda invoke, (2) 사용자가 **Function URL**로 **GET** 요청.  
+- **출력:** Telegram 메시지, S3 또는 로컬에 기록되는 **실행 로그·대시보드 스냅샷**.
 
 ### 진입점: HTTP vs 스케줄
 
-`handler.lambda_handler`가 HTTP인지 먼저 판별합니다.
+`handler.lambda_handler`가 HTTP 이벤트 여부를 판별합니다.
 
 ```mermaid
 flowchart TB
   IN[이벤트 수신]
   IN --> Q{HTTP?}
   Q -->|yes| D[Dashboard HTML / JSON]
-  Q -->|no| J[jobType 읽기]
+  Q -->|no| J[jobType 파싱]
   J --> R[run_job]
 ```
 
-- **HTTP:** `local_server.py`도 같은 **`lambda_handler`** 사용 → 로컬·배포에서 대시보드 경로 동일.  
-- **스케줄:** `news` · `gov` · `x` · `youtube` 중 하나만 실행.
+- **HTTP:** `local_server.py`도 동일 **`lambda_handler`**를 호출하므로 로컬·배포 환경에서 대시보드 동작이 일치합니다.  
+- **스케줄:** `news`, `gov`, `x`, `youtube` 중 하나만 실행합니다.
 
 ### 저장소: 로컬과 S3
 
-DB 없이 **같은 path 규칙**을 디렉터리와 S3에 적용합니다.
+관계형 DB 없이 **동일 object key 규칙**을 파일 시스템과 S3에 적용합니다.
 
 ```mermaid
 flowchart TB
@@ -128,10 +180,10 @@ flowchart TB
 | 경로 | 역할 |
 |------|------|
 | `config/` | 소스 URL, 키워드, 필터, prompts |
-| `state/` | checkpoint, sent items, dashboard snapshot |
-| `output/…` | 실행·항목·실패 로그(날짜별 JSON) |
+| `state/` | checkpoint, 발송 이력, 대시보드 스냅샷 |
+| `output/…` | 실행·항목·실패 로그(일자별 JSON) |
 
-### Job별 요약
+### Job별 처리 요약
 
 | Job | 처리 | Telegram |
 |-----|------|----------|
@@ -139,29 +191,41 @@ flowchart TB
 | `x` | X API + LLM relevance | body + link + reason |
 | `youtube` | KTV 검색 + LLM 요약 | summary + link |
 
-### AWS 구성 (`template.yaml`)
+### AWS 리소스 (`template.yaml`)
 
-- S3 버킷 1, Lambda 1, **EventBridge**로 job마다 주기, **Function URL** (템플릿엔 인증 없음 — 실서비스는 **WAF** 등 권장).  
-- Runtime: Python 3.12, IAM: Secrets Manager + S3 read/write.
+배포 시 생성되는 리소스 및 **현재 템플릿에 정의된 스케줄**은 다음과 같습니다(변경 시 `template.yaml`을 기준으로 합니다).
 
-### 사용 패키지
+| Job (`jobType`) | 스케줄 표현식 | 비고 |
+|-----------------|---------------|------|
+| `news` | `rate(4 hours)` | 4시간 간격 |
+| `gov` | `cron(0 2 * * ? *)` | 매일 **UTC 02:00** (KST는 서머타임 규칙에 따라 변동) |
+| `x` | `rate(10 minutes)` | 10분 간격 |
+| `youtube` | `rate(30 minutes)` | 30분 간격 |
+
+- **리소스:** S3 버킷 1, Lambda 함수 1, 상기 스케줄에 대응하는 **EventBridge Rule**, **Function URL** (`AuthType: NONE` — 운영 환경에서는 **WAF**·인증 프록시 등 검토 권장).  
+- **런타임:** Python 3.12, 메모리 1024MB, 타임아웃 900초.  
+- **Lambda 환경 변수:** `S3_BUCKET`, `S3_PREFIX`, `APP_SECRET_ARN`은 템플릿이 **자동 주입**합니다.  
+- **Function URL:** CloudFormation **Outputs**에 HTTPS URL이 **포함되지 않습니다**. **Lambda 콘솔 → 구성 → 함수 URL**에서 확인합니다.  
+- **IAM:** Secrets Manager `GetSecretValue`(파라미터 ARN) + 대상 S3 버킷 CRUD.
+
+### 의존 패키지
 
 `boto3`, `requests`, `beautifulsoup4`, `lxml`, `openai`, `google-generativeai`, `python-dotenv`, `pytest`.
 
 ---
 
-## 로컬과 AWS의 차이
+## 로컬과 AWS 환경 비교
 
-| | 저장 | job 실행 | 대시보드 |
-|---|------|----------|----------|
-| **로컬** | `S3_BUCKET` 없음 → `local_data/` | `python cli.py run --job …` | `python local_server.py` → handler 동일 |
+| | 저장소 | job 실행 | 대시보드 |
+|---|--------|----------|----------|
+| **로컬** | `S3_BUCKET` 미설정 → `local_data/` | `python cli.py run --job …` | `python local_server.py` (동일 handler) |
 | **AWS** | `S3_BUCKET` → S3 | EventBridge → Lambda | Function URL, GET only |
 
-바뀌는 것은 **환경 변수**와 **스토리지 뒤단**뿐입니다. **`clipper.runner` / `clipper.storage` 로직은 동일**합니다.
+**애플리케이션 로직**(`clipper.runner`, `clipper.storage`)은 동일하며, **설정·스토리지 백엔드**만 달라집니다.
 
 ---
 
-## 로컬에서 실행
+## 로컬 실행
 
 ```powershell
 cd DX_handson
@@ -172,21 +236,21 @@ pip install -r requirements.txt
 
 ### 환경 변수
 
-1. **`.env.example`**을 복사해 **`.env`**로 저장하고 값을 넣습니다.  
-2. `clipper/secrets.py`가 **`python-dotenv`**로 `.env`를 불러옵니다.
+1. **`.env.example`**을 복사하여 **`.env`**를 만들고 값을 설정합니다.  
+2. `clipper/secrets.py`가 **`python-dotenv`**로 `.env`를 로드합니다.
 
-**자주 쓰는 변수**
+**주요 변수**
 
-- `LOCAL_DATA_ROOT` — 기본 `local_data`  
+- `LOCAL_DATA_ROOT` — 기본값 `local_data`  
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`  
-- **`LLM_PROVIDER`**: `auto` (기본) · `gemini` · `azure` · `openai`  
-  - `auto`: YouTube는 `GEMINI_API_KEY`가 있으면 Gemini 우선; X는 Azure → OpenAI → Gemini  
+- **`LLM_PROVIDER`**: `auto`(기본) · `gemini` · `azure` · `openai`  
+  - `auto`: YouTube는 `GEMINI_API_KEY`가 있으면 Gemini 우선; X는 Azure → OpenAI → Gemini 순  
 - `GEMINI_API_KEY`, 선택 `GEMINI_MODEL` — [Google AI Studio](https://aistudio.google.com/apikey)  
 - `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, 선택 deployment / API version / max tokens  
 - `OPENAI_API_KEY`, 선택 `OPENAI_API_BASE`, `OPENAI_MODEL`  
 - `TWITTER_BEARER_TOKEN`, `YOUTUBE_API_KEY`
 
-### job 한 번 돌리기
+### 단일 job 실행
 
 ```powershell
 python cli.py run --job news
@@ -201,12 +265,12 @@ python local_server.py
 
 ---
 
-## AWS에 배포
+## AWS 배포
 
-1. **Secrets Manager**에 JSON 시크릿을 만들고 **`AppSecretArn`**에 연결합니다(키 이름은 위 env와 같게).  
-2. `sam build` → `sam deploy --guided`  
-3. Lambda **Function URL**로 대시보드( GET `/` )에 접속합니다.  
-4. S3에 `config/`가 없으면 배포 패키지의 `config/`를 한 번 **bootstrap**합니다.
+1. **Secrets Manager**에 JSON 시크릿을 생성합니다(키 이름은 상기 환경 변수와 동일).  
+2. `sam build` 후 `sam deploy --guided` 시 파라미터 **`AppSecretArn`**에 해당 시크릿 ARN을 지정합니다.  
+3. 배포 완료 후 **Lambda 콘솔 → 함수 URL**에서 HTTPS 엔드포인트를 확인하고, 브라우저로 GET `/`, `/api/dashboard` 등에 접근합니다.  
+4. S3에 `config/`가 없으면 최초 실행 시 배포 패키지의 `config/`가 **bootstrap**됩니다(`clipper.storage.bootstrap_config_if_missing`).
 
 ---
 

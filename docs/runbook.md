@@ -15,7 +15,7 @@
 
 ## 대시보드 URL
 
-`template.yaml`에 **함수 URL(`FunctionUrlConfig`)**이 들어 있으므로, `sam deploy` 후 **CloudFormation 출력** 또는 **Lambda 콘솔 → 구성 → 함수 URL**에서 HTTPS 주소를 확인하면 됩니다.
+`template.yaml`에 **함수 URL(`FunctionUrlConfig`)**이 들어 있으므로, `sam deploy` 후 **Lambda 콘솔 → 구성 → 함수 URL**에서 HTTPS 주소를 확인하면 됩니다. (CloudFormation **Outputs**에는 URL 문자열이 없고 `BucketName`·`FunctionName`만 있습니다.)
 
 수동으로 붙이거나 바꿀 때는:
 
